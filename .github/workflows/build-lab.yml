@@ -110,10 +110,10 @@ jobs:
           $dst = Join-Path $env:GITHUB_WORKSPACE 'dist'
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
           $map = @{
-            'app-mobile-arm64_v8a-debug.apk'     = 'WebHTV-实验室版-手机arm64-debug.apk'
-            'app-mobile-armeabi_v7a-debug.apk'   = 'WebHTV-实验室版-手机armv7-debug.apk'
-            'app-leanback-arm64_v8a-debug.apk'   = 'WebHTV-实验室版-电视arm64-debug.apk'
-            'app-leanback-armeabi_v7a-debug.apk' = 'WebHTV-实验室版-电视armv7-debug.apk'
+            'app-mobile-arm64_v8a-debug.apk'     = 'WebHTV-Lab-mobile-arm64-debug.apk'
+            'app-mobile-armeabi_v7a-debug.apk'   = 'WebHTV-Lab-mobile-armv7-debug.apk'
+            'app-leanback-arm64_v8a-debug.apk'   = 'WebHTV-Lab-tv-arm64-debug.apk'
+            'app-leanback-armeabi_v7a-debug.apk' = 'WebHTV-Lab-tv-armv7-debug.apk'
           }
           Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE 'upstream\app\build\outputs\apk') -Recurse -Filter '*.apk' | ForEach-Object {
             $name = $map[$_.Name]
@@ -142,12 +142,17 @@ jobs:
             --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')" \
             --repo "$GITHUB_REPOSITORY"
           for f in dist/*.apk; do
-            for i in 1 2 3 4 5; do
+            for i in 1 2 3 4 5 6 7 8 9 10; do
               if gh release upload lab-latest "$f" --repo "$GITHUB_REPOSITORY" --clobber; then
                 break
               fi
               echo "附件上传失败，重试 $i : $f"
-              sleep 5
+              sleep 10
             done
           done
-          gh release view lab-latest --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
+          count=$(gh release view lab-latest --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')
+          echo "已上传附件数量: $count"
+          if [ "$count" -lt 4 ]; then
+            echo "附件上传不完整"
+            exit 1
+          fi
