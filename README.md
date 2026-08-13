@@ -8,6 +8,21 @@
 4. 构建手机/电视 × arm64/armv7 四个 APK；
 5. 自动发布到 Release（标签 `lab-latest`），并上传构建日志工件。
 
+## 实际仓库（已完成配置）
+
+仓库：https://github.com/woaiguyu1314/webhtv-lab
+
+Release 页面：https://github.com/woaiguyu1314/webhtv-lab/releases/latest
+
+固定下载地址（英文附件名，稳定可靠）：
+
+```text
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-mobile-arm64-debug.apk
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-mobile-armv7-debug.apk
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-tv-arm64-debug.apk
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-tv-armv7-debug.apk
+```
+
 ## 本文件夹包含
 
 - `.github/workflows/build-lab.yml`：自动化工作流
@@ -29,13 +44,6 @@
 - 你推送 `lab-overlay.zip`、`patch-lab.ps1` 或工作流文件到 `main` 分支时也会触发。
 
 ## 固定下载地址
-
-```text
-https://github.com/你的用户名/你的仓库/releases/latest/download/WebHTV-实验室版-手机arm64-debug.apk
-https://github.com/你的用户名/你的仓库/releases/latest/download/WebHTV-实验室版-手机armv7-debug.apk
-https://github.com/你的用户名/你的仓库/releases/latest/download/WebHTV-实验室版-电视arm64-debug.apk
-https://github.com/你的用户名/你的仓库/releases/latest/download/WebHTV-实验室版-电视armv7-debug.apk
-```
 
 每次自动构建会更新同一个 Release，地址不变，分享给任何人都能拿到最新版。
 
