@@ -137,7 +137,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete lab-latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create lab-latest dist/*.apk \
+          gh release create lab-latest \
             --title "实验室版最新构建" \
             --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')" \
             --repo "$GITHUB_REPOSITORY"
+          for f in dist/*.apk; do
+            for i in 1 2 3 4 5; do
+              if gh release upload lab-latest "$f" --repo "$GITHUB_REPOSITORY" --clobber; then
+                break
+              fi
+              echo "附件上传失败，重试 $i : $f"
+              sleep 5
+            done
+          done
+          gh release view lab-latest --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
