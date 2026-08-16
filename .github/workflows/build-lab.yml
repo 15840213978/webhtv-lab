@@ -26,7 +26,35 @@ jobs:
       - name: 检出本仓库
         uses: actions/checkout@v5
 
+      - name: 检查上游是否有新提交
+        id: check
+        shell: pwsh
+        run: |
+          $lastFile = Join-Path $env:GITHUB_WORKSPACE 'upstream-last.txt'
+          $last = ''
+          if (Test-Path $lastFile) {
+            $last = (Get-Content $lastFile -Raw).Trim()
+          }
+          $current = ''
+          try {
+            $resp = Invoke-RestMethod -Headers @{ 'User-Agent' = 'webhtv-lab-bot' } -Uri 'https://api.github.com/repos/Silent1566/webhtv/commits/main'
+            $current = $resp.sha
+          } catch {
+            Write-Host '获取上游 SHA 失败，本次不跳过，继续构建'
+          }
+          Write-Host "last=$last current=$current"
+          $skip = ($env:GITHUB_EVENT_NAME -eq 'schedule' -and -not [string]::IsNullOrWhiteSpace($current) -and $last -eq $current)
+          if ($skip) {
+            Write-Host '上游没有新提交，跳过本次构建'
+            Write-Host "::set-output name=skip::true"
+          } else {
+            Write-Host '需要构建'
+            Write-Host "::set-output name=skip::false"
+          }
+          Write-Host "::set-output name=sha::$current"
+
       - name: 下载默影视上游源码
+        if: steps.check.outputs.skip != 'true'
         shell: pwsh
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'upstream.zip'
@@ -54,23 +82,27 @@ jobs:
           Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: 配置 JDK 21
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
       - name: 配置 Python 3.10
+        if: steps.check.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: 配置 Android SDK
+        if: steps.check.outputs.skip != 'true'
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0 build-tools;37.0.0'
           accept-android-sdk-licenses: 'true'
 
       - name: 写入 local.properties
+        if: steps.check.outputs.skip != 'true'
         shell: pwsh
         run: |
           function Esc([string]$v) { return $v.Replace('\', '\\').Replace(':', '\:') }
@@ -79,6 +111,7 @@ jobs:
           Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'upstream\local.properties') -Value $content -Encoding ASCII
 
       - name: 应用实验室覆盖层
+        if: steps.check.outputs.skip != 'true'
         shell: pwsh
         run: |
           if (-not (Test-Path -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'lab-overlay.zip'))) {
@@ -92,19 +125,23 @@ jobs:
           Write-Host '覆盖层已应用'
 
       - name: 应用实验室补丁
+        if: steps.check.outputs.skip != 'true'
         shell: pwsh
         run: |
           & (Join-Path $env:GITHUB_WORKSPACE 'patch-lab.ps1') -SourceDir (Join-Path $env:GITHUB_WORKSPACE 'upstream')
 
       - name: 启用 Gradle 缓存
+        if: steps.check.outputs.skip != 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: 构建 APK
+        if: steps.check.outputs.skip != 'true'
         working-directory: upstream
         shell: cmd
         run: gradlew.bat :app:assembleDebug --console=plain
 
       - name: 收集 APK
+        if: steps.check.outputs.skip != 'true'
         shell: pwsh
         run: |
           $dst = Join-Path $env:GITHUB_WORKSPACE 'dist'
@@ -125,6 +162,7 @@ jobs:
           if ((Get-ChildItem -LiteralPath $dst -Filter '*.apk').Count -lt 4) { throw 'APK 数量不足' }
 
       - name: 上传 APK 工件
+        if: steps.check.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: WebHTV-实验室版-APK
@@ -132,6 +170,7 @@ jobs:
           retention-days: 30
 
       - name: 发布到 Release
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -156,3 +195,17 @@ jobs:
             echo "附件上传不完整"
             exit 1
           fi
+
+      - name: 记录本次构建的上游版本
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $sha = "${{ steps.check.outputs.sha }}"
+          if ([string]::IsNullOrWhiteSpace($sha)) { Write-Host '无上游 SHA，跳过记录'; exit 0 }
+          Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'upstream-last.txt') -Value $sha -NoNewline -Encoding ASCII
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add upstream-last.txt
+          if (git diff --cached --quiet) { Write-Host '上游 SHA 无变化，无需提交'; exit 0 }
+          git commit -m "chore: 记录上游构建版本 $sha"
+          git push origin HEAD:main
