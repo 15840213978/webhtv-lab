@@ -1,33 +1,55 @@
-# 默影视实验室版自动构建
+# GitHub 全自动构建：实验室版 APK
 
-本仓库将实验室覆盖层合并到 [Silent1566/webhtv](https://github.com/Silent1566/webhtv) 最新正式 Release 源码，并通过 GitHub Actions 自动构建和发布 APK。
+这套文件上传到你的 GitHub 仓库后，GitHub 会自动：
 
-## 自动更新流程
-
-1. 每天北京时间 10:00 查询上游最新正式 Release；
-2. 与 `upstream-last.txt` 中上次成功构建的 Release ID 和标签比较；
-3. 仅在上游发布新正式 Release 时下载该标签的源码、应用 `lab-overlay.zip` 和 `patch-lab.ps1`；
+1. 下载默影视上游最新源码；
+2. 合并实验室覆盖层（`lab-overlay.zip`）；
+3. 应用补丁（包名改为 `com.myself.movie.lab`、应用名改为“默影视实验室版”、补齐依赖）；
 4. 构建手机/电视 × arm64/armv7 四个 APK；
-5. 更新固定的 `lab-latest` Release；
-6. 发布成功后记录本次上游 Release，避免无变化时重复构建。
+5. 自动发布到 Release（标签 `lab-latest`），并上传构建日志工件。
 
-上游 `main` 分支的普通提交和预发布版不会触发定时构建。更新覆盖层、补丁或工作流，以及手动运行工作流时，会忽略 Release 版本比较并使用最新正式 Release 强制构建一次。
+## 实际仓库（已完成配置）
 
-## 下载
+仓库：https://github.com/woaiguyu1314/webhtv-lab
 
-- [最新 Release](https://github.com/woaiguyu1314/webhtv-lab/releases/latest)
-- [手机版 arm64](https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-mobile-arm64-debug.apk)
-- [手机版 armv7](https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-mobile-armv7-debug.apk)
-- [电视版 arm64](https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-tv-arm64-debug.apk)
-- [电视版 armv7](https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-tv-armv7-debug.apk)
+Release 页面：https://github.com/woaiguyu1314/webhtv-lab/releases/latest
 
-## 仓库文件
+固定下载地址（英文附件名，稳定可靠）：
 
-- `lab-overlay.zip`：覆盖到上游源码根目录的实验室功能文件；
-- `patch-lab.ps1`：修改应用名、包名并补充实验室功能依赖；
-- `.github/workflows/build-lab.yml`：上游检测、构建和 Release 发布工作流；
-- `upstream-last.txt`：最近一次成功构建的上游 Release ID 和标签，由工作流自动维护。
+```text
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-mobile-arm64-debug.apk
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-mobile-armv7-debug.apk
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-tv-arm64-debug.apk
+https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-tv-armv7-debug.apk
+```
 
-## 维护
+## 本文件夹包含
 
-替换仓库根目录的 `lab-overlay.zip` 并推送到 `main` 后，会立即触发完整构建。若上游结构变化导致编译失败，请根据 Actions 日志调整覆盖层或补丁后重新推送。
+- `.github/workflows/build-lab.yml`：自动化工作流
+- `patch-lab.ps1`：实验室补丁脚本
+- `lab-overlay.zip`：实验室缝合覆盖层（必须放在仓库根目录）
+
+## 首次设置步骤
+
+1. 在 GitHub 新建一个仓库（公开或私有都可以）；
+2. 把上面三个文件上传到仓库根目录（保持 `.github` 目录结构不变）；
+3. 打开仓库 `Settings → Actions → General → Workflow permissions`，选择 **Read and write permissions** 并保存（否则无法自动发布 Release）；
+4. 打开仓库 `Actions` 页面，左侧点“实验室版自动构建”，再点 `Run workflow` 手动跑第一次；
+5. 完成后打开仓库 `Releases` 页面，在 `lab-latest` 里下载四个 APK。
+
+## 自动更新时机
+
+- 每天北京时间 10:00 自动检查上游并构建（可改 `.github/workflows/build-lab.yml` 里的 `cron`）；
+- 手动触发：Actions → Run workflow；
+- 你推送 `lab-overlay.zip`、`patch-lab.ps1` 或工作流文件到 `main` 分支时也会触发。
+
+## 固定下载地址
+
+每次自动构建会更新同一个 Release，地址不变，分享给任何人都能拿到最新版。
+
+## 注意事项
+
+- GitHub 免费版 Actions 每月 2000 分钟额度，一次构建约 10–20 分钟，后续有缓存会更快；
+- 上游源码约 120MB，第一次构建会下载依赖，之后依赖有缓存；
+- APK 超过 GitHub 100MB 的仓库文件限制，所以自动发布走 Release 附件，不要手动把 APK 提交进仓库；
+- 如果上游更新导致编译失败，打开 Actions 日志看报错，修好 `lab-overlay.zip` 后推送即可自动重跑。
