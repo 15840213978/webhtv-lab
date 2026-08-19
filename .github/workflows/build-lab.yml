@@ -21,7 +21,6 @@ concurrency:
 
 env:
   UPSTREAM_REPO: Silent1566/webhtv
-  UPSTREAM_REF: main
 
 jobs:
   build:
@@ -30,7 +29,7 @@ jobs:
       - name: 检出本仓库
         uses: actions/checkout@v5
 
-      - name: 检查上游是否有新提交
+      - name: 检查上游最新正式 Release
         id: upstream
         shell: pwsh
         env:
@@ -38,41 +37,57 @@ jobs:
         run: |
           $lastFile = Join-Path $env:GITHUB_WORKSPACE 'upstream-last.txt'
           $last = if (Test-Path -LiteralPath $lastFile) { (Get-Content -LiteralPath $lastFile -Raw).Trim() } else { '' }
-          $current = ''
-          try {
-            $headers = @{ 'User-Agent' = 'webhtv-lab-bot' }
-            if (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { $headers.Authorization = "Bearer $env:GH_TOKEN" }
-            $url = "https://api.github.com/repos/$env:UPSTREAM_REPO/commits/$env:UPSTREAM_REF"
-            $current = (Invoke-RestMethod -Headers $headers -Uri $url).sha
-          } catch {
-            Write-Warning "获取上游 SHA 失败：$($_.Exception.Message)"
+          $headers = @{ 'User-Agent' = 'webhtv-lab-bot'; 'Accept' = 'application/vnd.github+json' }
+          if (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { $headers.Authorization = "Bearer $env:GH_TOKEN" }
+          $url = "https://api.github.com/repos/$env:UPSTREAM_REPO/releases/latest"
+          try { $release = Invoke-RestMethod -Headers $headers -Uri $url } catch { throw "获取上游最新正式 Release 失败：$($_.Exception.Message)" }
+
+          $releaseId = [string]$release.id
+          $tag = [string]$release.tag_name
+          $archiveUrl = [string]$release.zipball_url
+          if ([string]::IsNullOrWhiteSpace($releaseId) -or [string]::IsNullOrWhiteSpace($tag) -or [string]::IsNullOrWhiteSpace($archiveUrl)) {
+            throw '上游最新 Release 信息不完整'
           }
+          $current = "$releaseId|$tag"
 
           $force = $env:GITHUB_EVENT_NAME -ne 'schedule'
-          $shouldBuild = $force -or [string]::IsNullOrWhiteSpace($current) -or $last -ne $current
-          Write-Host "上游：$env:UPSTREAM_REPO@$env:UPSTREAM_REF"
-          Write-Host "已构建：$last"
-          Write-Host "当前：$current"
+          $shouldBuild = $force -or $last -ne $current
+          Write-Host "上游：$env:UPSTREAM_REPO"
+          Write-Host "已构建 Release：$last"
+          Write-Host "最新 Release：$current"
           Write-Host "构建：$shouldBuild"
-          "sha=$current" >> $env:GITHUB_OUTPUT
+          "identity=$current" >> $env:GITHUB_OUTPUT
+          "release_id=$releaseId" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "archive_url=$archiveUrl" >> $env:GITHUB_OUTPUT
           "should_build=$($shouldBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-      - name: 下载上游源码
+      - name: 下载上游 Release 源码
         if: steps.upstream.outputs.should_build == 'true'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
+          UPSTREAM_ARCHIVE_URL: ${{ steps.upstream.outputs.archive_url }}
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'upstream.zip'
           $tmp = Join-Path $env:GITHUB_WORKSPACE 'upstream_tmp'
+          $escapedTag = [uri]::EscapeDataString($env:UPSTREAM_TAG)
           $urls = @(
-            "https://codeload.github.com/$env:UPSTREAM_REPO/zip/refs/heads/$env:UPSTREAM_REF",
-            "https://gh-proxy.com/https://github.com/$env:UPSTREAM_REPO/archive/refs/heads/$env:UPSTREAM_REF.zip"
+            $env:UPSTREAM_ARCHIVE_URL,
+            "https://codeload.github.com/$env:UPSTREAM_REPO/zip/refs/tags/$escapedTag"
           )
           $source = $null
           foreach ($url in $urls) {
             Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
             Write-Host "尝试下载：$url"
-            curl.exe -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 -o $out $url
+            $curlArgs = @('-L', '--fail', '--retry', '3', '--retry-delay', '5', '--connect-timeout', '30')
+            if ($url.StartsWith('https://api.github.com/') -and -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+              $curlArgs += @('-H', "Authorization: Bearer $env:GH_TOKEN", '-H', 'Accept: application/vnd.github+json')
+            }
+            $curlArgs += @('-o', $out, $url)
+            & curl.exe @curlArgs
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $out) -or (Get-Item -LiteralPath $out).Length -lt 1MB) { continue }
             try {
               Expand-Archive -LiteralPath $out -DestinationPath $tmp -Force
@@ -181,7 +196,7 @@ jobs:
           gh release delete lab-latest --yes --cleanup-tag 2>/dev/null || true
           gh release create lab-latest \
             --title "实验室版最新构建" \
-            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')；上游提交 ${{ steps.upstream.outputs.sha }}" \
+            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')；上游 Release ${{ steps.upstream.outputs.tag }}" \
             --repo "$GITHUB_REPOSITORY"
           for f in dist/*.apk; do
             uploaded=false
@@ -196,14 +211,14 @@ jobs:
           echo "已上传附件数量：$count"
           if [ "$count" -lt 4 ]; then exit 1; fi
 
-      - name: 记录本次构建的上游版本
-        if: steps.upstream.outputs.should_build == 'true' && steps.upstream.outputs.sha != ''
+      - name: 记录本次构建的上游 Release
+        if: steps.upstream.outputs.should_build == 'true' && steps.upstream.outputs.identity != ''
         shell: pwsh
         run: |
-          Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'upstream-last.txt') -Value '${{ steps.upstream.outputs.sha }}' -NoNewline -Encoding ASCII
+          Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'upstream-last.txt') -Value '${{ steps.upstream.outputs.identity }}' -NoNewline -Encoding UTF8
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add upstream-last.txt
-          if (git diff --cached --quiet) { Write-Host '上游 SHA 无变化，无需提交'; exit 0 }
-          git commit -m 'chore: 记录上游构建版本 ${{ steps.upstream.outputs.sha }}'
+          if (git diff --cached --quiet) { Write-Host '上游 Release 无变化，无需提交'; exit 0 }
+          git commit -m 'chore: 记录上游 Release ${{ steps.upstream.outputs.tag }}'
           git push origin HEAD:main
