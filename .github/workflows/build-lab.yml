@@ -72,10 +72,33 @@ jobs:
 
       - name: 写入 local.properties
         shell: pwsh
+        env:
+          WEBHTV_SIGNING_KEYSTORE_B64: ${{ secrets.WEBHTV_SIGNING_KEYSTORE_B64 }}
+          WEBHTV_SIGNING_STORE_PASSWORD: ${{ secrets.WEBHTV_SIGNING_STORE_PASSWORD }}
+          WEBHTV_SIGNING_KEY_PASSWORD: ${{ secrets.WEBHTV_SIGNING_KEY_PASSWORD }}
+          WEBHTV_SIGNING_KEY_ALIAS: ${{ secrets.WEBHTV_SIGNING_KEY_ALIAS }}
         run: |
+          $required = @{
+            WEBHTV_SIGNING_KEYSTORE_B64 = $env:WEBHTV_SIGNING_KEYSTORE_B64
+            WEBHTV_SIGNING_STORE_PASSWORD = $env:WEBHTV_SIGNING_STORE_PASSWORD
+            WEBHTV_SIGNING_KEY_PASSWORD = $env:WEBHTV_SIGNING_KEY_PASSWORD
+            WEBHTV_SIGNING_KEY_ALIAS = $env:WEBHTV_SIGNING_KEY_ALIAS
+          }
+          foreach ($item in $required.GetEnumerator()) {
+            if ([string]::IsNullOrWhiteSpace($item.Value)) {
+              throw "缺少 GitHub Secret: $($item.Key)"
+            }
+          }
           function Esc([string]$v) { return $v.Replace('\', '\\').Replace(':', '\:') }
           $py = (Get-Command python).Source
-          $content = "sdk.dir=" + (Esc $env:ANDROID_HOME) + "`r`n" + "chaquopyBuildPython=" + (Esc $py) + "`r`n"
+          $keystore = Join-Path $env:RUNNER_TEMP 'webhtv-lab-release.jks'
+          [IO.File]::WriteAllBytes($keystore, [Convert]::FromBase64String($env:WEBHTV_SIGNING_KEYSTORE_B64))
+          $content = "sdk.dir=" + (Esc $env:ANDROID_HOME) + "`r`n" +
+            "chaquopyBuildPython=" + (Esc $py) + "`r`n" +
+            "storeFile=" + (Esc $keystore) + "`r`n" +
+            "keyAlias=" + $env:WEBHTV_SIGNING_KEY_ALIAS + "`r`n" +
+            "storePassword=" + $env:WEBHTV_SIGNING_STORE_PASSWORD + "`r`n" +
+            "keyPassword=" + $env:WEBHTV_SIGNING_KEY_PASSWORD + "`r`n"
           Set-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'upstream\local.properties') -Value $content -Encoding ASCII
 
       - name: 应用实验室覆盖层

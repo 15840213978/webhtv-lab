@@ -21,6 +21,20 @@ Get-ChildItem -LiteralPath (Join-Path $SourceDir 'app\src') -Recurse -Filter 'st
 $gradleFile = Join-Path $SourceDir 'app\build.gradle'
 $g = [System.IO.File]::ReadAllText($gradleFile)
 $g = [regex]::Replace($g, 'applicationId\s+"[^"]+"', 'applicationId "com.myself.movie.lab"')
+
+# 使用固定签名配置给 debug APK 签名。签名参数由 GitHub Actions 写入
+# local.properties；这样每次构建都使用同一把密钥，才能覆盖安装升级。
+if ($g -notmatch '(?s)buildTypes\s*\{.*?debug\s*\{\s*signingConfig\s*=') {
+    $debugSigning = @"
+    debug {
+        signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+    }
+"@
+    if ($g -notmatch '(?s)buildTypes\s*\{\r?\n') {
+        throw '上游 app/build.gradle 缺少 buildTypes 配置，无法绑定固定签名'
+    }
+    $g = [regex]::Replace($g, '(?s)(buildTypes\s*\{\r?\n)', "`$1$debugSigning`n", 1)
+}
 if ($g -notmatch 'libs\.commons\.compress') {
     $g = [regex]::Replace($g, '(?s)(dependencies \{\r?\n.*?)\r?\n\}', "`$1`n    implementation libs.commons.compress`n    implementation libs.xz`n}", 1)
 }
