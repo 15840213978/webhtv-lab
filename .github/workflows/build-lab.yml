@@ -2,8 +2,12 @@ name: 实验室版自动构建
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *'
+    inputs:
+      upstream_ref:
+        description: '上游代码 ref（默认 main；填 Release tag 则构建该版本）'
+        required: false
+        default: main
+        type: string
   push:
     branches:
       - main
@@ -28,11 +32,16 @@ jobs:
 
       - name: 下载默影视上游源码
         shell: pwsh
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
         run: |
+          $ref = if ([string]::IsNullOrWhiteSpace($env:UPSTREAM_REF)) { 'main' } else { $env:UPSTREAM_REF }
+          $kind = if ($ref -eq 'main') { 'heads' } else { 'tags' }
+          Write-Host "使用上游 ref: $ref ($kind)"
           $out = Join-Path $env:RUNNER_TEMP 'upstream.zip'
           $urls = @(
-            'https://codeload.github.com/Silent1566/webhtv/zip/refs/heads/main',
-            'https://gh-proxy.com/https://github.com/Silent1566/webhtv/archive/refs/heads/main.zip'
+            "https://codeload.github.com/Silent1566/webhtv/zip/refs/$kind/$ref",
+            "https://gh-proxy.com/https://github.com/Silent1566/webhtv/archive/refs/$kind/$ref.zip"
           )
           foreach ($u in $urls) {
             Write-Host "尝试下载: $u"
@@ -182,7 +191,7 @@ jobs:
           gh release delete lab-latest --yes --cleanup-tag 2>/dev/null || true
           gh release create lab-latest \
             --title "实验室版最新构建" \
-            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')" \
+            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')（上游 ref：${UPSTREAM_REF:-main}）" \
             --repo "$GITHUB_REPOSITORY"
           for f in dist/*.apk; do
             for i in 1 2 3 4 5 6 7 8 9 10; do
