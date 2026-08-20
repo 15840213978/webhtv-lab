@@ -1,0 +1,88 @@
+name: 跟随上游 Release 自动构建
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: check-upstream-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出本仓库
+        uses: actions/checkout@v5
+
+      - name: 获取上游最新 Release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="$(gh api repos/Silent1566/webhtv/releases?per_page=1 --jq '.[0].tag_name' 2>/dev/null || true)"
+          if [ -z "$TAG" ]; then
+            echo "未发现上游 Release"
+            exit 0
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "上游最新 Release: $TAG"
+
+      - name: 判断是否需要构建
+        id: check
+        run: |
+          set -euo pipefail
+          TAG="${TAG:-}"
+          if [ -z "$TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          STATE_FILE=".github/state/last-upstream-release.txt"
+          LAST=""
+          if [ -f "$STATE_FILE" ]; then
+            LAST="$(tr -d '[:space:]' < "$STATE_FILE")"
+          fi
+          echo "当前记录: ${LAST:-（无）}"
+          echo "上游最新: $TAG"
+          if [ "$LAST" = "$TAG" ]; then
+            echo "版本无变化，跳过"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "检测到新版本，触发构建"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 触发实验室版构建
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          gh workflow run build-lab.yml --ref main -f upstream_ref="$TAG"
+          echo "已触发实验室版构建: $TAG"
+
+      - name: 记录已触发版本
+        if: steps.check.outputs.skip != 'true'
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          set -euo pipefail
+          mkdir -p .github/state
+          printf '%s' "$TAG" > .github/state/last-upstream-release.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/state/last-upstream-release.txt
+          if git diff --cached --quiet; then
+            echo "状态文件无变化"
+            exit 0
+          fi
+          git commit -m "chore: 记录已触发的上游版本 $TAG"
+          git push origin main
+          echo "状态已记录: $TAG"
