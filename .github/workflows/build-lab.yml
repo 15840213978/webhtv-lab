@@ -187,6 +187,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
         run: |
           gh release delete lab-latest --yes --cleanup-tag 2>/dev/null || true
           gh release create lab-latest \
