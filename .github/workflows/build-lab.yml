@@ -160,7 +160,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "APK 签名校验失败: $($_.Name)" }
             $line = $info | Where-Object { $_ -match 'certificate SHA-256 digest:' } | Select-Object -First 1
             if ($null -eq $line) { throw "无法读取 APK 证书指纹: $($_.Name)" }
-            $actual = (($line -split ':', 2)[1] -replace '[^0-9A-Fa-f]', '').ToLowerInvariant()
+            $actual = (($line -replace '^.*certificate SHA-256 digest:\s*', '') -replace '[^0-9A-Fa-f]', '').ToLowerInvariant()
             if ($actual -ne $expected) {
               throw "APK 使用了错误签名: $($_.Name)，实际指纹 $actual"
             }
