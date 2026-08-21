@@ -26,7 +26,7 @@ https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-t
 ## 本文件夹包含
 
 - `.github/workflows/build-lab.yml`：自动化构建工作流
-- `.github/workflows/check-upstream-release.yml`：每 30 分钟检查上游 Release 的跟随工作流
+- `.github/workflows/check-upstream-release.yml`：每天北京时间 22:00 检查上游 Release 的跟随工作流
 - `patch-lab.ps1`：实验室补丁脚本
 - `lab-overlay.zip`：实验室缝合覆盖层（必须放在仓库根目录）
 
@@ -35,12 +35,35 @@ https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-t
 1. 在 GitHub 新建一个仓库（公开或私有都可以）；
 2. 把上面文件上传到仓库根目录（保持 `.github` 目录结构不变）；
 3. 打开仓库 `Settings → Actions → General → Workflow permissions`，选择 **Read and write permissions** 并保存（否则无法自动发布 Release）；
-4. 打开仓库 `Actions` 页面，左侧点“实验室版自动构建”，再点 `Run workflow` 手动跑第一次；
-5. 完成后打开仓库 `Releases` 页面，在 `lab-latest` 里下载四个 APK。
+4. 在 `Settings → Secrets and variables → Actions` 中新建以下 4 个 **Repository secrets**（名称必须完全一致）：
+   - `WEBHTV_SIGNING_KEYSTORE_B64`：签名 keystore 文件的 Base64 内容；
+   - `WEBHTV_SIGNING_STORE_PASSWORD`：keystore 密码；
+   - `WEBHTV_SIGNING_KEY_PASSWORD`：签名 key 密码；
+   - `WEBHTV_SIGNING_KEY_ALIAS`：签名 key alias。
+5. 打开仓库 `Actions` 页面，启用工作流（如果 GitHub 提示需要启用），左侧点“实验室版自动构建”，再点 `Run workflow` 手动跑第一次；
+6. 完成后打开仓库 `Releases` 页面，在 `lab-latest` 里下载四个 APK。
+
+### 给 fork 使用者的签名配置
+
+fork 不会继承原仓库的 Secrets，所以使用者必须在自己的 fork 中重新添加上面 4 个 Secrets。签名文件不要提交到仓库，也不要写进工作流；只通过 GitHub 的 Secrets 页面保存。`WEBHTV_SIGNING_KEYSTORE_B64` 需要填写 keystore 的 Base64 单行文本，例如 PowerShell：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\webhtv-lab-release.jks'))
+```
+
+`WEBHTV_SIGNING_KEY_ALIAS` 不能随便填写，必须与 keystore 内的真实 alias 完全一致。可先在本机查看：
+
+```powershell
+keytool -list -v -keystore .\webhtv-lab-release.jks
+```
+
+输入 `WEBHTV_SIGNING_STORE_PASSWORD` 后，找到输出中的 `Alias name`（中文环境可能显示“别名名称”），把该值原样填入 `WEBHTV_SIGNING_KEY_ALIAS`。如果日志提示 `No key with alias ... found in keystore`，就是 alias 填错了或使用的 keystore 与 alias 不配套。
+
+如果 fork 的 Actions 权限是只读，构建本身可能完成，但状态文件推送和 `lab-latest` Release 发布会失败；需要在 `Settings → Actions → General → Workflow permissions` 允许 **Read and write permissions**。仓库为 fork 时，定时任务也可能默认未启用，需先在 `Actions` 页面手动启用并先运行一次工作流。
 
 ## 自动更新时机
 
-- 每 30 分钟检查一次上游 `Silent1566/webhtv` 的 Release；上游发布新版本（含 beta）后自动用该 Release 标签的源码构建，并更新 `lab-latest`；
+- 每天北京时间 22:00 检查一次上游 `Silent1566/webhtv` 的 Release；上游发布新版本（含 beta）后自动用该 Release 标签的源码构建，并更新 `lab-latest`；
 - 你推送 `lab-overlay.zip`、`patch-lab.ps1` 或工作流文件到 `main` 时立即构建（使用上游 `main` 最新代码）；
 - 手动触发：Actions → 实验室版自动构建 → Run workflow，可填写 `upstream_ref` 指定构建某个 Release tag；
 - 想立即检查一次上游版本，可手动触发 Actions → 跟随上游 Release 自动构建。
