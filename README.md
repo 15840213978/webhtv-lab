@@ -2,7 +2,7 @@
 
 这套文件上传到你的 GitHub 仓库后，GitHub 会自动：
 
-1. 跟随上游 `Silent1566/webhtv` 的 Release，发布新版本（含 beta）时自动下载对应 Release 源码；
+1. 每次构建都读取上游 `Silent1566/webhtv` 的最新 Release（含 beta），并下载对应 Release 标签源码；
 2. 合并实验室覆盖层（`lab-overlay.zip`）；
 3. 应用补丁（包名改为 `com.myself.movie.lab`、应用名改为“默影视实验室版”、补齐依赖）；
 4. 构建手机/电视 × arm64/armv7 四个 APK；
@@ -33,8 +33,8 @@ https://github.com/woaiguyu1314/webhtv-lab/releases/latest/download/WebHTV-Lab-t
 ## 自动更新时机
 
 - 每天北京时间 22:00 检查一次上游 `Silent1566/webhtv` 的 Release；上游发布新版本（含 beta）后自动用该 Release 标签的源码构建，并更新 `lab-latest`；
-- 你推送 `lab-overlay.zip`、`patch-lab.ps1` 或工作流文件到 `main` 时立即构建（使用上游 `main` 最新代码）；
-- 手动触发：Actions → 实验室版自动构建 → Run workflow，可填写 `upstream_ref` 指定构建某个 Release tag；
+- 你推送 `lab-overlay.zip`、`patch-lab.ps1` 或工作流文件到 `main` 时立即构建，始终使用上游最新 Release（含 beta）源码；
+- 手动触发：Actions → 实验室版自动构建 → Run workflow，同样始终使用上游最新 Release（含 beta）源码；
 - 想立即检查一次上游版本，可手动触发 Actions → 跟随上游 Release 自动构建。
 
 ## 固定下载地址

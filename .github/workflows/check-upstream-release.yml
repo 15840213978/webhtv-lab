@@ -66,7 +66,7 @@ jobs:
           TAG: ${{ env.TAG }}
         run: |
           set -euo pipefail
-          gh workflow run build-lab.yml --ref main -f upstream_ref="$TAG"
+          gh workflow run build-lab.yml --ref main
           echo "已触发实验室版构建: $TAG"
 
       - name: 记录已触发版本

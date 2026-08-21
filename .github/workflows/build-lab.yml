@@ -2,12 +2,6 @@ name: 实验室版自动构建
 
 on:
   workflow_dispatch:
-    inputs:
-      upstream_ref:
-        description: '上游代码 ref（默认 main；填 Release tag 则构建该版本）'
-        required: false
-        default: main
-        type: string
   push:
     branches:
       - main
@@ -30,18 +24,25 @@ jobs:
       - name: 检出本仓库
         uses: actions/checkout@v5
 
-      - name: 下载默影视上游源码
+      - name: 下载默影视最新 Release 源码
         shell: pwsh
         env:
-          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $ref = if ([string]::IsNullOrWhiteSpace($env:UPSTREAM_REF)) { 'main' } else { $env:UPSTREAM_REF }
-          $kind = if ($ref -eq 'main') { 'heads' } else { 'tags' }
-          Write-Host "使用上游 ref: $ref ($kind)"
+          $ErrorActionPreference = 'Stop'
+          $releases = gh api 'repos/Silent1566/webhtv/releases?per_page=20' | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw '获取上游 Release 列表失败' }
+          $latest = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
+          if ($null -eq $latest -or [string]::IsNullOrWhiteSpace($latest.tag_name)) {
+            throw '未找到可用的上游 Release'
+          }
+          $ref = [string]$latest.tag_name
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "UPSTREAM_RELEASE_TAG=$ref" -Encoding utf8
+          Write-Host "使用上游最新 Release: $ref (prerelease=$($latest.prerelease))"
           $out = Join-Path $env:RUNNER_TEMP 'upstream.zip'
           $urls = @(
-            "https://codeload.github.com/Silent1566/webhtv/zip/refs/$kind/$ref",
-            "https://gh-proxy.com/https://github.com/Silent1566/webhtv/archive/refs/$kind/$ref.zip"
+            "https://codeload.github.com/Silent1566/webhtv/zip/refs/tags/$ref",
+            "https://gh-proxy.com/https://github.com/Silent1566/webhtv/archive/refs/tags/$ref.zip"
           )
           foreach ($u in $urls) {
             Write-Host "尝试下载: $u"
@@ -187,12 +188,12 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          UPSTREAM_RELEASE_TAG: ${{ env.UPSTREAM_RELEASE_TAG }}
         run: |
           gh release delete lab-latest --yes --cleanup-tag 2>/dev/null || true
           gh release create lab-latest \
             --title "实验室版最新构建" \
-            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')（上游 ref：${UPSTREAM_REF:-main}）" \
+            --notes "自动构建于 $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M')（上游 Release：${UPSTREAM_RELEASE_TAG}）" \
             --repo "$GITHUB_REPOSITORY"
           for f in dist/*.apk; do
             for i in 1 2 3 4 5 6 7 8 9 10; do
