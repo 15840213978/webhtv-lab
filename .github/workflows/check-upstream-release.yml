@@ -2,7 +2,8 @@ name: 跟随上游 Release 自动构建
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    # GitHub Actions 使用 UTC；北京时间每天 22:00 = UTC 14:00。
+    - cron: '0 14 * * *'
   workflow_dispatch:
 
 permissions:
