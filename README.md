@@ -8,6 +8,15 @@
 4. 构建手机/电视 × arm64/armv7 四个 APK；
 5. 自动发布到 Release（标签 `lab-latest`），并上传构建日志工件。
 
+## 上游源码与致谢
+
+本仓库只保存自动化构建配置，不包含上游完整源码。这里发布的 APK 全部来自以下开源项目，请尊重原作者的开源成果：
+
+- 直接上游：[Silent1566/webhtv](https://github.com/Silent1566/webhtv) —— 基于鱼佬的 WebHomeTV 二次开发，GitHub 标注 GPL-3.0；
+- WebHomeTV 原版：[fish2018/webhtv](https://github.com/fish2018/webhtv) —— 鱼佬作品，基于 FongMi 二次开发，GitHub 标注 GPL-3.0；
+- 生态基础：[FongMi/TV](https://github.com/FongMi/TV) 及 CatVod 开源生态。
+
+每次自动构建使用的上游 Release 标签都会写在对应构建的 Release 说明里。使用、分发本仓库 APK 时，请遵守上游项目的开源许可证，并保留对原作者与所有贡献者的署名和致谢。
 ## 实际仓库（已完成配置）
 
 仓库：https://github.com/woaiguyu1314/webhtv-lab
