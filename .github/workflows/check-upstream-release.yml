@@ -1,8 +1,10 @@
+# 修正版：避免 git push rejected
+# 修改点：记录版本前先同步远程 main
+
 name: 跟随上游 Release 自动构建
 
 on:
   schedule:
-    # GitHub Actions 使用 UTC；北京时间每天 22:00 = UTC 14:00。
     - cron: '0 14 * * *'
   workflow_dispatch:
 
@@ -20,6 +22,8 @@ jobs:
     steps:
       - name: 检出本仓库
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: 获取上游最新 Release
         id: latest
@@ -33,29 +37,19 @@ jobs:
             exit 0
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          echo "上游最新 Release: $TAG"
 
       - name: 判断是否需要构建
         id: check
         run: |
           set -euo pipefail
           TAG="${TAG:-}"
-          if [ -z "$TAG" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           STATE_FILE=".github/state/last-upstream-release.txt"
           LAST=""
-          if [ -f "$STATE_FILE" ]; then
-            LAST="$(tr -d '[:space:]' < "$STATE_FILE")"
-          fi
-          echo "当前记录: ${LAST:-（无）}"
-          echo "上游最新: $TAG"
+          [ -f "$STATE_FILE" ] && LAST="$(tr -d '[:space:]' < "$STATE_FILE")"
+
           if [ "$LAST" = "$TAG" ]; then
-            echo "版本无变化，跳过"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "检测到新版本，触发构建"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -67,7 +61,6 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run build-lab.yml --ref main
-          echo "已触发实验室版构建: $TAG"
 
       - name: 记录已触发版本
         if: steps.check.outputs.skip != 'true'
@@ -77,13 +70,19 @@ jobs:
           set -euo pipefail
           mkdir -p .github/state
           printf '%s' "$TAG" > .github/state/last-upstream-release.txt
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add .github/state/last-upstream-release.txt
+
           if git diff --cached --quiet; then
-            echo "状态文件无变化"
             exit 0
           fi
+
           git commit -m "chore: 记录已触发的上游版本 $TAG"
+
+          # 关键修复：先同步远程，避免 fetch first
+          git pull --rebase origin main
+
           git push origin main
-          echo "状态已记录: $TAG"
