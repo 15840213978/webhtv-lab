@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory = $true)]
     [string]$SourceDir
 )
@@ -57,4 +57,47 @@ if ($t -notmatch 'commons-compress\s*=\s*\{') {
 }
 [System.IO.File]::WriteAllText($tomlFile, $t, $enc)
 
-Write-Host '实验室补丁已应用'
+
+
+# ===== overlay string duplicate protection =====
+# 防止上游新增 string 后，与 lab overlay 重复导致 Duplicate resources
+# 规则：上游已有的 name 保留，上游优先；overlay 同名自动跳过
+
+function Remove-DuplicateOverlayStrings {
+    param(
+        [string]$BaseStrings,
+        [string]$OverlayStrings
+    )
+
+    if (!(Test-Path $BaseStrings) -or !(Test-Path $OverlayStrings)) {
+        return
+    }
+
+    [xml]$baseXml = Get-Content $BaseStrings -Encoding UTF8
+    [xml]$overlayXml = Get-Content $OverlayStrings -Encoding UTF8
+
+    $baseNames = @{}
+    foreach ($s in $baseXml.resources.string) {
+        $baseNames[$s.name] = $true
+    }
+
+    $remove = @()
+    foreach ($s in $overlayXml.resources.string) {
+        if ($baseNames.ContainsKey($s.name)) {
+            $remove += $s
+        }
+    }
+
+    foreach ($s in $remove) {
+        [void]$overlayXml.resources.RemoveChild($s)
+    }
+
+    $overlayXml.Save($OverlayStrings)
+}
+
+$mainStrings = Join-Path $SourceDir 'app\src\main\res\values\strings.xml'
+$labStrings = Join-Path $SourceDir 'app\src\main\res\values\lab_strings.xml'
+
+Remove-DuplicateOverlayStrings -BaseStrings $mainStrings -OverlayStrings $labStrings
+
+Write-Host '实验室补丁已应用（含重复资源保护）'
