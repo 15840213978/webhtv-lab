@@ -59,45 +59,79 @@ if ($t -notmatch 'commons-compress\s*=\s*\{') {
 
 
 
-# ===== overlay string duplicate protection =====
-# 防止上游新增 string 后，与 lab overlay 重复导致 Duplicate resources
-# 规则：上游已有的 name 保留，上游优先；overlay 同名自动跳过
+# ===== overlay string duplicate protection V2 =====
+# 扫描所有 values XML，自动清理 overlay 与上游重复资源
+# 保留上游资源，删除 overlay 同名 string/plurals/string-array
 
-function Remove-DuplicateOverlayStrings {
+function Remove-DuplicateOverlayResources {
     param(
-        [string]$BaseStrings,
-        [string]$OverlayStrings
+        [string]$ValuesDir
     )
 
-    if (!(Test-Path $BaseStrings) -or !(Test-Path $OverlayStrings)) {
+    if (!(Test-Path $ValuesDir)) {
         return
     }
 
-    [xml]$baseXml = Get-Content $BaseStrings -Encoding UTF8
-    [xml]$overlayXml = Get-Content $OverlayStrings -Encoding UTF8
+    $xmlFiles = Get-ChildItem -LiteralPath $ValuesDir -Filter '*.xml'
 
     $baseNames = @{}
-    foreach ($s in $baseXml.resources.string) {
-        $baseNames[$s.name] = $true
-    }
 
-    $remove = @()
-    foreach ($s in $overlayXml.resources.string) {
-        if ($baseNames.ContainsKey($s.name)) {
-            $remove += $s
+    # 先收集 strings.xml 等基础资源
+    foreach ($file in $xmlFiles) {
+        if ($file.Name -notmatch 'lab|overlay') {
+            try {
+                [xml]$xml = Get-Content $file.FullName -Encoding UTF8
+                foreach ($node in $xml.resources.string) {
+                    $baseNames[$node.name] = $true
+                }
+                foreach ($node in $xml.resources.plurals) {
+                    $baseNames[$node.name] = $true
+                }
+                foreach ($node in $xml.resources.'string-array') {
+                    $baseNames[$node.name] = $true
+                }
+            } catch {}
         }
     }
 
-    foreach ($s in $remove) {
-        [void]$overlayXml.resources.RemoveChild($s)
-    }
+    # 再处理 lab/overlay 文件
+    foreach ($file in $xmlFiles | Where-Object {$_.Name -match 'lab|overlay'}) {
+        try {
+            [xml]$xml = Get-Content $file.FullName -Encoding UTF8
+            $changed = $false
 
-    $overlayXml.Save($OverlayStrings)
+            @($xml.resources.string) | ForEach-Object {
+                if ($baseNames.ContainsKey($_.name)) {
+                    [void]$xml.resources.RemoveChild($_)
+                    $changed = $true
+                }
+            }
+
+            @($xml.resources.plurals) | ForEach-Object {
+                if ($baseNames.ContainsKey($_.name)) {
+                    [void]$xml.resources.RemoveChild($_)
+                    $changed = $true
+                }
+            }
+
+            @($xml.resources.'string-array') | ForEach-Object {
+                if ($baseNames.ContainsKey($_.name)) {
+                    [void]$xml.resources.RemoveChild($_)
+                    $changed = $true
+                }
+            }
+
+            if ($changed) {
+                $xml.Save($file.FullName)
+                Write-Host "清理重复资源: $($file.Name)"
+            }
+        } catch {
+            Write-Warning "跳过资源文件: $($file.Name)"
+        }
+    }
 }
 
-$mainStrings = Join-Path $SourceDir 'app\src\main\res\values\strings.xml'
-$labStrings = Join-Path $SourceDir 'app\src\main\res\values\lab_strings.xml'
+$valuesDir = Join-Path $SourceDir 'app\src\main\res\values'
+Remove-DuplicateOverlayResources -ValuesDir $valuesDir
 
-Remove-DuplicateOverlayStrings -BaseStrings $mainStrings -OverlayStrings $labStrings
-
-Write-Host '实验室补丁已应用（含重复资源保护）'
+Write-Host '实验室补丁已应用（V2自动资源冲突修复）'
